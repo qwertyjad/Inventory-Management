@@ -1,0 +1,6 @@
+{
+    "require": {
+        "phpauth/phpauth": "^1.5",
+        "phpmailer/phpmailer": "^6.9"
+    }
+}
