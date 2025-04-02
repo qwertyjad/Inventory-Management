@@ -591,20 +591,43 @@ public function getUniqueOrderedItems() {
  * @param string $item_name Item name
  * @return int Total quantity in items table
  */
+/**
+ * Get total quantity of an item in the items table
+ */
+/**
+ * Get total quantity of an item in the items table
+ */
 public function getTotalQuantityInItems($item_name) {
     try {
-        $query = "SELECT SUM(quantity) as total_quantity 
-                  FROM items 
-                  WHERE name = :item_name";
-        $stmt = $this->db->prepare($query);
-        $stmt->bindParam(':item_name', $item_name);
+        $sql = "SELECT SUM(quantity) as total 
+                FROM items 
+                WHERE name = :item_name";
+        $stmt = $this->db->prepare($sql);
+        $stmt->bindParam(':item_name', $item_name, PDO::PARAM_STR);
         $stmt->execute();
         $result = $stmt->fetch(PDO::FETCH_ASSOC);
-        $total = (int)($result['total_quantity'] ?? 0);
-        error_log("getTotalQuantityInItems for $item_name: $total"); // Debug log
-        return $total;
+        return (int)($result['total'] ?? 0);
     } catch (PDOException $e) {
-        error_log("getTotalQuantityInItems error: " . $e->getMessage());
+        error_log("getTotalQuantityInItems: PDO Exception - " . $e->getMessage());
+        return 0;
+    }
+}
+
+/**
+ * Get total approved request quantity by item name
+ */
+public function getTotalApprovedRequestQuantityByName($item_name) {
+    try {
+        $sql = "SELECT SUM(quantity) as total 
+                FROM item_requests 
+                WHERE item_name = :item_name AND status = 'approved'";
+        $stmt = $this->db->prepare($sql);
+        $stmt->bindParam(':item_name', $item_name, PDO::PARAM_STR);
+        $stmt->execute();
+        $result = $stmt->fetch(PDO::FETCH_ASSOC);
+        return (int)($result['total'] ?? 0);
+    } catch (PDOException $e) {
+        error_log("getTotalApprovedRequestQuantityByName: PDO Exception - " . $e->getMessage());
         return 0;
     }
 }
@@ -630,7 +653,424 @@ public function getItemById($id) {
         error_log("getItemById error: " . $e->getMessage());
         return false;
     }
+}   
+/**
+ * Save a guest user with the role 'user'
+ * @param string $name The name of the guest user
+ * @return int|bool The guest user ID if successful, false otherwise
+ */
+public function saveGuestUser($name) {
+    // Trim the name
+    $name = trim($name);
+
+    try {
+        // Check if the name already exists (case-insensitive)
+        $sql = "SELECT id FROM guest_users WHERE LOWER(name) = LOWER(:name) LIMIT 1";
+        $stmt = $this->db->prepare($sql);
+        $stmt->bindParam(':name', $name, PDO::PARAM_STR);
+        $stmt->execute();
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if ($row) {
+            // Name already exists, return the existing guest_user_id
+            return $row['id'];
+        } else {
+            // Name doesn't exist, create a new entry
+            $sql = "INSERT INTO guest_users (name, created_at) VALUES (:name, NOW())";
+            $stmt = $this->db->prepare($sql);
+            $stmt->bindParam(':name', $name, PDO::PARAM_STR);
+            $result = $stmt->execute();
+            if ($result) {
+                return $this->db->lastInsertId(); // Get the new ID
+            }
+            return false;
+        }
+    } catch (PDOException $e) {
+        // Log the error (in a production environment)
+        error_log("Error in saveGuestUser: " . $e->getMessage());
+        return false;
+    }
+}
+        /**
+ * Add a new item request by a guest user
+ * @param int $guest_user_id The guest user ID
+ * @param string $item_name The name of the item
+ * @param int $quantity The requested quantity
+ * @return bool True if successful, false otherwise
+ */
+public function addItemRequest(int $guest_user_id, int $item_id, string $item_name, int $quantity): bool {
+    try {
+        $sql = "INSERT INTO item_requests (guest_user_id, item_id, item_name, quantity, request_date, status) 
+                VALUES (:guest_user_id, :item_id, :item_name, :quantity, NOW(), 'pending')";
+        error_log("addItemRequest: Executing query: $sql with guest_user_id=$guest_user_id, item_id=$item_id, item_name=$item_name, quantity=$quantity");
+        
+        $stmt = $this->db->prepare($sql);
+        if (!$stmt) {
+            error_log("addItemRequest: Failed to prepare statement: " . implode(", ", $this->db->errorInfo()));
+            return false;
+        }
+
+        $stmt->bindParam(':guest_user_id', $guest_user_id, PDO::PARAM_INT);
+        $stmt->bindParam(':item_id', $item_id, PDO::PARAM_INT);
+        $stmt->bindParam(':item_name', $item_name, PDO::PARAM_STR);
+        $stmt->bindParam(':quantity', $quantity, PDO::PARAM_INT);
+
+        $result = $stmt->execute();
+        if (!$result) {
+            error_log("addItemRequest: Failed to execute statement: " . implode(", ", $stmt->errorInfo()));
+            return false;
+        }
+
+        return true;
+    } catch (Exception $e) {
+        error_log("Error in addItemRequest: " . $e->getMessage());
+        return false;
+    }
 }
 
+/**
+ * Get all item requests for a guest user
+ * @param int $guest_user_id The guest user ID
+ * @return array Array of item requests
+ */
+public function getItemRequestsByUser(int $guest_user_id): array {
+    try {
+        $sql = "SELECT * FROM item_requests WHERE guest_user_id = :guest_user_id ORDER BY request_date DESC";
+        $stmt = $this->db->prepare($sql);
+        $stmt->bindParam(':guest_user_id', $guest_user_id, PDO::PARAM_INT);
+        $stmt->execute();
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch (PDOException $e) {
+        error_log("Error in getItemRequestsByUser: " . $e->getMessage());
+        return [];
+    }
+}public function getItemRequest(int $request_id) {
+    try {
+        $sql = "SELECT * FROM item_requests WHERE id = :request_id";
+        error_log("getItemRequest: Executing query: $sql with request_id=$request_id");
+        $stmt = $this->db->prepare($sql);
+        $stmt->bindParam(':request_id', $request_id, PDO::PARAM_INT);
+        $stmt->execute();
+        $result = $stmt->fetch(PDO::FETCH_ASSOC);
+        error_log("getItemRequest: Fetched request for request_id=$request_id: " . json_encode($result));
+        return $result ?: null;
+    } catch (PDOException $e) {
+        error_log("Error in getItemRequest: " . $e->getMessage());
+        return null;
+    }
+}
+/**
+ * Update an item request
+ * @param int $request_id The request ID
+ * @param string $item_name The updated item name
+ * @param int $quantity The updated quantity
+ * @return bool True if successful, false otherwise
+ */
+public function updateItemRequest(int $request_id, string $item_name, int $quantity): bool {
+    try {
+        if ($quantity <= 0) {
+            error_log("updateItemRequest: Invalid quantity ($quantity) for request_id=$request_id");
+            return false;
+        }
+
+        // Check if the request exists and is pending
+        $sql = "SELECT * FROM item_requests WHERE id = :request_id AND status = 'pending'";
+        $stmt = $this->db->prepare($sql);
+        $stmt->bindParam(':request_id', $request_id, PDO::PARAM_INT);
+        $stmt->execute();
+        $request = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$request) {
+            error_log("updateItemRequest: Request not found or not pending for request_id=$request_id");
+            return false;
+        }
+
+        // Verify the item exists and quantity is valid
+        $item = $this->getItem($request['item_id']);
+        if (!$item) {
+            error_log("updateItemRequest: Item not found for item_id={$request['item_id']}");
+            return false;
+        }
+        if ($quantity > $item['quantity']) {
+            error_log("updateItemRequest: Quantity ($quantity) exceeds available ({$item['quantity']}) for item_id={$request['item_id']}");
+            return false;
+        }
+
+        // Only update the quantity, leave item_name unchanged
+        $sql = "UPDATE item_requests SET quantity = :quantity WHERE id = :request_id AND status = 'pending'";
+        $stmt = $this->db->prepare($sql);
+        $stmt->bindParam(':request_id', $request_id, PDO::PARAM_INT);
+        $stmt->bindParam(':quantity', $quantity, PDO::PARAM_INT);
+        $result = $stmt->execute();
+
+        if (!$result) {
+            error_log("updateItemRequest: SQL execution failed: " . implode(", ", $stmt->errorInfo()));
+            return false;
+        }
+
+        $rowCount = $stmt->rowCount();
+        error_log("updateItemRequest: Updated $rowCount rows for request_id=$request_id with quantity=$quantity");
+        return $rowCount > 0;
+    } catch (PDOException $e) {
+        error_log("updateItemRequest: PDO Exception - " . $e->getMessage());
+        return false;
+    }
+}
+/**
+ * Delete an item request
+ * @param int $request_id The request ID
+ * @return bool True if successful, false otherwise
+ */
+public function deleteItemRequest($request_id) {
+    try {
+        $query = "DELETE FROM item_requests WHERE id = :id";
+        $stmt = $this->db->prepare($query);
+        $stmt->bindParam(':id', $request_id, PDO::PARAM_INT);
+        return $stmt->execute();
+    } catch (PDOException $e) {
+        error_log("deleteItemRequest error: " . $e->getMessage());
+        return false;
+    }
+}
+public function cancelItemRequest(int $request_id): bool {
+    try {
+        $sql = "UPDATE item_requests SET status = 'canceled' WHERE id = :request_id AND status = 'pending'";
+        error_log("cancelItemRequest: Executing query: $sql with request_id=$request_id");
+        $stmt = $this->db->prepare($sql);
+        $stmt->bindParam(':request_id', $request_id, PDO::PARAM_INT);
+        $result = $stmt->execute();
+        if (!$result) {
+            error_log("cancelItemRequest: Failed to execute statement: " . implode(", ", $stmt->errorInfo()));
+            return false;
+        }
+        $rowCount = $stmt->rowCount();
+        error_log("cancelItemRequest: Updated $rowCount rows for request_id=$request_id");
+        return $rowCount > 0;
+    } catch (PDOException $e) {
+        error_log("Error in cancelItemRequest: " . $e->getMessage());
+        return false;
+    }
+}
+/**
+ * Approve an item request and deduct the quantity from the item stock
+ * @param int $request_id The request ID
+ * @return bool True if successful, false otherwise
+ */
+/**
+ * Approve an item request and deduct the quantity from the item stock
+ * @param int $request_id The request ID
+ * @return bool True if successful, false otherwise
+ */
+public function approveRequest(int $request_id): bool {
+    try {
+        // Fetch the request
+        $sql = "SELECT * FROM item_requests WHERE id = :request_id AND status = 'pending'";
+        $stmt = $this->db->prepare($sql);
+        $stmt->bindParam(':request_id', $request_id, PDO::PARAM_INT);
+        $stmt->execute();
+        $request = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$request) {
+            error_log("approveRequest: Request not found or not pending for request_id=$request_id");
+            return false;
+        }
+
+        // Check item availability
+        $item = $this->getItem($request['item_id']);
+        if (!$item || $request['quantity'] > $item['quantity']) {
+            error_log("approveRequest: Insufficient stock for item_id={$request['item_id']} (requested: {$request['quantity']}, available: {$item['quantity']})");
+            return false;
+        }
+
+        // Update request status to 'approved'
+        $sql = "UPDATE item_requests SET status = 'approved' WHERE id = :request_id";
+        $stmt = $this->db->prepare($sql);
+        $stmt->bindParam(':request_id', $request_id, PDO::PARAM_INT);
+        if (!$stmt->execute()) {
+            error_log("approveRequest: Failed to update request status: " . implode(", ", $stmt->errorInfo()));
+            return false;
+        }
+
+        // Deduct quantity from items table
+        $new_quantity = $item['quantity'] - $request['quantity'];
+        $sql = "UPDATE items SET quantity = :new_quantity WHERE id = :item_id";
+        $stmt = $this->db->prepare($sql);
+        $stmt->bindParam(':new_quantity', $new_quantity, PDO::PARAM_INT);
+        $stmt->bindParam(':item_id', $request['item_id'], PDO::PARAM_INT);
+        if (!$stmt->execute()) {
+            error_log("approveRequest: Failed to update item quantity: " . implode(", ", $stmt->errorInfo()));
+            return false;
+        }
+
+        error_log("approveRequest: Successfully approved request_id=$request_id, deducted {$request['quantity']} from item_id={$request['item_id']}");
+        return true;
+    } catch (PDOException $e) {
+        error_log("approveRequest: PDO Exception - " . $e->getMessage());
+        return false;
+    }
+}
+
+/**
+ * Reject an item request
+ * @param int $request_id The request ID
+ * @return bool True if successful, false otherwise
+ */
+public function rejectRequest(int $request_id): bool {
+    try {
+        $sql = "UPDATE item_requests SET status = 'rejected' WHERE id = :request_id AND status = 'pending'";
+        $stmt = $this->db->prepare($sql);
+        $stmt->bindParam(':request_id', $request_id, PDO::PARAM_INT);
+        $result = $stmt->execute();
+
+        if (!$result) {
+            error_log("rejectRequest: Failed to execute: " . implode(", ", $stmt->errorInfo()));
+            return false;
+        }
+
+        $rowCount = $stmt->rowCount();
+        error_log("rejectRequest: Updated $rowCount rows for request_id=$request_id to 'rejected'");
+        return $rowCount > 0;
+    } catch (PDOException $e) {
+        error_log("rejectRequest: PDO Exception - " . $e->getMessage());
+        return false;
+    }
+}
+
+/**
+ * Get all item requests (for admin view)
+ * @return array Array of all item requests
+ */
+public function getAllItemRequests(): array {
+    try {
+        $sql = "SELECT ir.*, gu.name as guest_user_name 
+                FROM item_requests ir 
+                LEFT JOIN guest_users gu ON ir.guest_user_id = gu.id 
+                ORDER BY ir.request_date DESC";
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute();
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch (PDOException $e) {
+        error_log("getAllItemRequests: PDO Exception - " . $e->getMessage());
+        return [];
+    }
+}
+/**
+ * Get total quantity of approved requests for an item by item_id
+ * @param int $item_id The item ID
+ * @return int Total quantity from approved requests
+ */
+public function getTotalApprovedRequestQuantity(int $item_id): int {
+    try {
+        $sql = "SELECT SUM(quantity) as total 
+                FROM item_requests 
+                WHERE item_id = :item_id AND status = 'approved'";
+        $stmt = $this->db->prepare($sql);
+        $stmt->bindParam(':item_id', $item_id, PDO::PARAM_INT);
+        $stmt->execute();
+        $result = $stmt->fetch(PDO::FETCH_ASSOC);
+        return (int)($result['total'] ?? 0);
+    } catch (PDOException $e) {
+        error_log("getTotalApprovedRequestQuantity: PDO Exception - " . $e->getMessage());
+        return 0;
+    }
+}
+/**
+ * Get recent item requests
+ * @param int $limit Number of requests to fetch
+ * @return array Array of recent requests
+ */
+public function getRecentItemRequests(int $limit = 10): array {
+    try {
+        $sql = "SELECT * FROM item_requests ORDER BY request_date DESC LIMIT :limit";
+        $stmt = $this->db->prepare($sql);
+        $stmt->bindParam(':limit', $limit, PDO::PARAM_INT);
+        $stmt->execute();
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch (PDOException $e) {
+        error_log("getRecentItemRequests: PDO Exception - " . $e->getMessage());
+        return [];
+    }
+}
+/**
+ * Get total quantity of approved requests for an item by name
+ * @param string $itemName The item name
+ * @return int Total quantity from approved requests
+ */
+public function addDelivery($po_number, $item_name, $delivered_quantity) {
+    try {
+        $sql = "INSERT INTO delivery_tracking (po_number, item_name, delivered_quantity) 
+                VALUES (:po_number, :item_name, :delivered_quantity)";
+        $stmt = $this->db->prepare($sql);
+        $stmt->bindParam(':po_number', $po_number, PDO::PARAM_STR);
+        $stmt->bindParam(':item_name', $item_name, PDO::PARAM_STR);
+        $stmt->bindParam(':delivered_quantity', $delivered_quantity, PDO::PARAM_INT);
+        return $stmt->execute();
+    } catch (PDOException $e) {
+        error_log("addDelivery: PDO Exception - " . $e->getMessage());
+        return false;
+    }
+}
+
+/**
+ * Get total delivered quantity for an item
+ */
+public function getTotalDeliveredQuantity($item_name) {
+    try {
+        $sql = "SELECT SUM(delivered_quantity) as total 
+                FROM delivery_tracking 
+                WHERE item_name = :item_name";
+        $stmt = $this->db->prepare($sql);
+        $stmt->bindParam(':item_name', $item_name, PDO::PARAM_STR);
+        $stmt->execute();
+        $result = $stmt->fetch(PDO::FETCH_ASSOC);
+        return (int)($result['total'] ?? 0);
+    } catch (PDOException $e) {
+        error_log("getTotalDeliveredQuantity: PDO Exception - " . $e->getMessage());
+        return 0;
+    }
+}
+/**
+ * Fetch all pending item requests
+ */
+/**
+ * Get pending item requests with guest names and item names
+ */
+public function getPendingItemRequests() {
+    try {
+        $sql = "SELECT ir.*, gu.name AS guest_name, i.name AS item_name 
+                FROM item_requests ir 
+                LEFT JOIN guest_users gu ON ir.guest_user_id = gu.id 
+                LEFT JOIN items i ON ir.item_id = i.id 
+                WHERE ir.status = 'pending'";
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute();
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch (PDOException $e) {
+        error_log("getPendingItemRequests: PDO Exception - " . $e->getMessage());
+        return [];
+    }
+}
+
+/**
+ * Get approved item requests with guest names and item names, limited to $limit
+ */
+public function getApprovedItemRequests($limit) {
+    try {
+        $sql = "SELECT ir.*, gu.name AS guest_name, i.name AS item_name 
+                FROM item_requests ir 
+                LEFT JOIN guest_users gu ON ir.guest_user_id = gu.id 
+                LEFT JOIN items i ON ir.item_id = i.id 
+                WHERE ir.status = 'approved' 
+                ORDER BY ir.request_date DESC 
+                LIMIT :limit";
+        $stmt = $this->db->prepare($sql);
+        $stmt->bindParam(':limit', $limit, PDO::PARAM_INT);
+        $stmt->execute();
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch (PDOException $e) {
+        error_log("getApprovedItemRequests: PDO Exception - " . $e->getMessage());
+        return [];
+    }
+}
 }
 ?>

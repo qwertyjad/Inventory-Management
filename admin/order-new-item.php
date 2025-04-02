@@ -6,8 +6,9 @@ Session::requireRole('admin');
 include 'header.php';
 $function = new Functions();
 
-// Fetch all purchase orders
+// Fetch all purchase orders (initial load)
 $orders = $function->getAllOrders();
+error_log("order-new.item.php: Raw orders: " . json_encode($orders));
 ?>
 
 <div style="padding: 20px; font-family: 'Arial', sans-serif; background-color: #f5f7fa; min-height: 100vh;">
@@ -49,35 +50,44 @@ $orders = $function->getAllOrders();
                         <th style="padding: 12px 16px;">Actions</th>
                     </tr>
                 </thead>
-                <tbody>
+                <tbody id="orders-table">
                     <?php
                     if ($orders) {
                         foreach ($orders as $order):
-                            $statusColor = $order['status'] === 'ordered' ? '#f6e05e' : ($order['status'] === 'shipped' ? '#63b3ed' : '#38a169');
+                            $statusLower = strtolower(trim($order['status'])); // Normalize: lowercase and trim
+                            error_log("order-new-item.php: Processing order {$order['po_number']}, status: {$statusLower}");
+                            $statusColor = $statusLower === 'ordered' ? '#f6e05e' : 
+                                          ($statusLower === 'shipped' ? '#63b3ed' : 
+                                          ($statusLower === 'delivered' ? '#38a169' : 
+                                          ($statusLower === 'canceled' ? '#e53e3e' : '#718096')));
                     ?>
                         <tr style="border-top: 1px solid #edf2f7; font-size: 14px; color: #2d3748;">
                             <td style="padding: 12px 16px;"><?=$order['po_number'];?></td>
                             <td style="padding: 12px 16px;"><?=$order['item_name'];?></td>
                             <td style="padding: 12px 16px;"><?=$order['quantity'];?></td>
-                            <td style="padding: 12px 16px;"><strong>₱ <?=number_format($order['total_cost'], 2);?></strong> </td>
+                            <td style="padding: 12px 16px;"><strong>₱ <?=number_format($order['total_cost'], 2);?></strong></td>
                             <td style="padding: 12px 16px;"><?=$order['supplier_name'];?></td>
-                            <td style="padding: 12px 16px;"><?=$order['order_date'];?></td>
+                            <td style="padding: 12px 16px;"><?=date('F j, Y, g:i A', strtotime($order['order_date']));?></td>
                             <td style="padding: 12px 16px;">
                                 <span style="background-color: <?=$statusColor;?>; color: white; padding: 4px 8px; border-radius: 12px; font-size: 12px; font-weight: 500;">
-                                    <?=$order['status'];?>
+                                    <?=ucfirst($order['status']);?>
                                 </span>
                             </td>
                             <td style="padding: 12px 16px;">
-                                <a href="edit-order.php?po_number=<?=$order['po_number'];?>" style="margin-right: 10px; text-decoration: none;">
-                                    <svg style="width: 20px; height: 20px;" fill="none" stroke="#2d3748" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path>
-                                    </svg>
-                                </a>
-                                <button onclick="openCancelModal('<?=$order['po_number'];?>')" style="background: none; border: none; cursor: pointer;">
-                                    <svg style="width: 20px; height: 20px;" fill="none" stroke="#e53e3e" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m2 0v12a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V6h12z"></path>
-                                    </svg>
-                                </button>
+                                <?php if ($statusLower !== 'canceled' && $statusLower !== 'delivered'): ?>
+                                    <a href="edit-order.php?po_number=<?=$order['po_number'];?>" style="margin-right: 10px; text-decoration: none;">
+                                        <svg style="width: 20px; height: 20px;" fill="none" stroke="#2d3748" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path>
+                                        </svg>
+                                    </a>
+                                    <button onclick="openCancelModal('<?=$order['po_number'];?>')" style="background: none; border: none; cursor: pointer;">
+                                        <svg style="width: 20px; height: 20px;" fill="none" stroke="#e53e3e" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m2 0v12a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V6h12z"></path>
+                                        </svg>
+                                    </button>
+                                <?php else: ?>
+                                    <span style="color: #718096; font-size: 14px;">No actions available</span>
+                                <?php endif; ?>
                             </td>
                         </tr>
                     <?php
@@ -149,17 +159,15 @@ document.addEventListener('DOMContentLoaded', function() {
     if (toastContainer) {
         const toasts = toastContainer.querySelectorAll('.toast-message');
         toasts.forEach(toast => {
-            setTimeout(() => {
-                toast.style.opacity = '1';
-            }, 100);
-            setTimeout(() => {
-                toast.style.opacity = '0';
-            }, 3000);
-            setTimeout(() => {
-                toast.remove();
-            }, 3500);
+            setTimeout(() => { toast.style.opacity = '1'; }, 100);
+            setTimeout(() => { toast.style.opacity = '0'; }, 3000);
+            setTimeout(() => { toast.remove(); }, 3500);
         });
     }
+
+    // Start real-time updates
+    fetchPurchaseOrdersData();
+    setInterval(fetchPurchaseOrdersData, 5000); // Poll every 5 seconds
 });
 
 // Modal functions
@@ -171,5 +179,63 @@ function openCancelModal(poNumber) {
 function closeCancelModal() {
     document.getElementById('cancelModal').style.display = 'none';
     document.getElementById('cancelPoNumber').value = '';
+}
+
+// Fetch and update purchase orders in real-time
+function fetchPurchaseOrdersData() {
+    fetch('fetch_purchase_orders_data.php')
+        .then(response => response.json())
+        .then(data => {
+            const ordersTable = document.getElementById('orders-table');
+            ordersTable.innerHTML = '';
+
+            if (data.orders.length === 0) {
+                ordersTable.innerHTML = `
+                    <tr>
+                        <td colspan="8" style="padding: 20px; text-align: center; color: #718096; font-size: 14px;">No purchase orders found.</td>
+                    </tr>
+                `;
+            } else {
+                data.orders.forEach(order => {
+                    const statusLower = order.status.toLowerCase().trim(); // Normalize: lowercase and trim
+                    console.log(`Processing order ${order.po_number}, status: ${statusLower}`); // Debug in browser console
+                    const statusColor = statusLower === 'ordered' ? '#f6e05e' : 
+                                       (statusLower === 'shipped' ? '#63b3ed' : 
+                                       (statusLower === 'delivered' ? '#38a169' : 
+                                       (statusLower === 'canceled' ? '#e53e3e' : '#718096')));
+
+                    const actions = (statusLower !== 'canceled' && statusLower !== 'delivered') ? `
+                        <a href="edit-order.php?po_number=${order.po_number}" style="margin-right: 10px; text-decoration: none;">
+                            <svg style="width: 20px; height: 20px;" fill="none" stroke="#2d3748" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path>
+                            </svg>
+                        </a>
+                        <button onclick="openCancelModal('${order.po_number}')" style="background: none; border: none; cursor: pointer;">
+                            <svg style="width: 20px; height: 20px;" fill="none" stroke="#e53e3e" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m2 0v12a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V6h12z"></path>
+                            </svg>
+                        </button>
+                    ` : `<span style="color: #718096; font-size: 14px;">No actions available</span>`;
+
+                    ordersTable.innerHTML += `
+                        <tr style="border-top: 1px solid #edf2f7; font-size: 14px; color: #2d3748;">
+                            <td style="padding: 12px 16px;">${order.po_number}</td>
+                            <td style="padding: 12px 16px;">${order.item_name}</td>
+                            <td style="padding: 12px 16px;">${order.quantity}</td>
+                            <td style="padding: 12px 16px;"><strong>₱ ${order.total_cost}</strong></td>
+                            <td style="padding: 12px 16px;">${order.supplier_name}</td>
+                            <td style="padding: 12px 16px;">${order.order_date}</td>
+                            <td style="padding: 12px 16px;">
+                                <span style="background-color: ${statusColor}; color: white; padding: 4px 8px; border-radius: 12px; font-size: 12px; font-weight: 500;">
+                                    ${order.status.charAt(0).toUpperCase() + order.status.slice(1)}
+                                </span>
+                            </td>
+                            <td style="padding: 12px 16px;">${actions}</td>
+                        </tr>
+                    `;
+                });
+            }
+        })
+        .catch(error => console.error('Error fetching purchase orders:', error));
 }
 </script>

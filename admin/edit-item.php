@@ -23,26 +23,28 @@ if (!$item) {
 // Fetch unique items from purchase_orders (only delivered)
 $orderedItems = $function->getUniqueOrderedItems();
 
-// Prepare item data for JavaScript (to use in auto-fill)
+// Prepare item data for JavaScript
 $itemsData = [];
 foreach ($orderedItems as $orderedItem) {
     $supplier = $function->GetUserInfo($orderedItem['supplier_id']);
     $totalInItems = $function->getTotalQuantityInItems($orderedItem['item_name']);
-    $remainingQuantity = $orderedItem['total_ordered_quantity'] - $totalInItems;
+    $totalApprovedRequests = $function->getTotalApprovedRequestQuantityByName($orderedItem['item_name']);
+    $remainingQuantity = $orderedItem['total_ordered_quantity'] - ($totalInItems + $totalApprovedRequests);
 
     $itemsData[$orderedItem['item_name']] = [
         'unit_cost' => (float)$orderedItem['unit_cost'],
         'supplier' => $supplier ? $supplier['full_name'] : 'Unknown',
         'total_quantity' => (int)$orderedItem['total_ordered_quantity'],
-        'remaining_quantity' => max(0, (int)$remainingQuantity) // Ensure non-negative
+        'remaining_quantity' => max(0, (int)$remainingQuantity) // Base remaining quantity
     ];
 }
-// Debug: Log the itemsData array
-error_log("itemsData: " . json_encode($itemsData));
 
-// Get the remaining quantity for the current item
-$remainingQuantity = isset($itemsData[$item['name']]) ? $itemsData[$item['name']]['remaining_quantity'] : 0;
-$totalQuantity = isset($itemsData[$item['name']]) ? $itemsData[$item['name']]['total_quantity'] : 0;
+// Calculate quantities for the current item
+$totalDelivered = isset($itemsData[$item['name']]) ? $itemsData[$item['name']]['total_quantity'] : 0;
+$totalApprovedRequests = $function->getTotalApprovedRequestQuantityByName($item['name']); // Use name-based method
+$totalInItems = $function->getTotalQuantityInItems($item['name']); // Total in items table
+$adjustedTotalInItems = $totalInItems - $item['quantity']; // Exclude current item's quantity
+$remainingQuantity = max(0, $totalDelivered - ($totalApprovedRequests + $adjustedTotalInItems)); // True remaining
 $unitCostFromPO = isset($itemsData[$item['name']]) ? $itemsData[$item['name']]['unit_cost'] : $item['cost'];
 $supplierFromPO = isset($itemsData[$item['name']]) ? $itemsData[$item['name']]['supplier'] : $item['supplier'];
 
@@ -74,14 +76,18 @@ include 'header.php';
                 <div style="flex: 1; min-width: 300px;">
                     <label for="quantity" style="display: block; font-size: 14px; font-weight: 500; color: #4a5568; margin-bottom: 5px;">
                         Quantity 
-                        <?php if ($totalQuantity > 0): ?>
-                            <strong><span style="font-size: 12px; color:rgb(255, 0, 0);"> ( Remaining: <?=$remainingQuantity;?> )</span></strong>
+                        <?php if ($totalDelivered > 0): ?>
+                            <strong><span style="font-size: 12px; color:rgb(255, 0, 0);"> ( Total Delivered: <?=$totalDelivered;?>, Remaining: <?=$remainingQuantity;?> )</span></strong>
                         <?php else: ?>
                             <span style="font-size: 12px; color: #718096;">(No delivered orders found)</span>
                         <?php endif; ?>
                     </label>
                     <input type="number" id="quantity" name="quantity" min="0" value="<?=$item['quantity'];?>" required oninput="calculateTotalCost()" style="width: 100%; padding: 10px; border: 1px solid #e2e8f0; border-radius: 5px; font-size: 14px; outline: none;">
-                    <input type="hidden" id="maxQuantity" value="<?= $remainingQuantity; ?>">
+                    <input type="hidden" id="totalDelivered" value="<?= $totalDelivered; ?>">
+                    <input type="hidden" id="currentQuantity" value="<?= $item['quantity']; ?>">
+                    <input type="hidden" id="totalApprovedRequests" value="<?= $totalApprovedRequests; ?>">
+                    <input type="hidden" id="totalInItems" value="<?= $totalInItems; ?>">
+                    <input type="hidden" id="remainingQuantity" value="<?= $remainingQuantity; ?>">
                 </div>
                 <div style="flex: 1; min-width: 300px;">
                     <label for="min_stock_level" style="display: block; font-size: 14px; font-weight: 500; color: #4a5568; margin-bottom: 5px;">Minimum Stock Level</label>
@@ -101,7 +107,7 @@ include 'header.php';
             <div style="display: flex; flex-wrap: wrap; gap: 20px; margin-top: 20px;">
                 <div style="flex: 1; min-width: 300px;">
                     <label for="location" style="display: block; font-size: 14px; font-weight: 500; color: #4a5568; margin-bottom: 5px;">Location</label>
-                    <input type="text" id="location" name="location" value="<?=$item['location'];?>" placeholder="e.g., Warehouse A" style="width: 100%; padding: 10px; border: 1px solid #e2e8f0; border-radius: 5px; font-size: 14px;  background-color: #f7fafc;" >
+                    <input type="text" id="location" name="location" value="<?=$item['location'];?>" placeholder="e.g., Warehouse A" style="width: 100%; padding: 10px; border: 1px solid #e2e8f0; border-radius: 5px; font-size: 14px; background-color: #f7fafc;">
                 </div>
                 <div style="flex: 1; min-width: 300px;">
                     <label for="supplier" style="display: block; font-size: 14px; font-weight: 500; color: #4a5568; margin-bottom: 5px;">Supplier</label>
@@ -110,12 +116,12 @@ include 'header.php';
             </div>
             <div style="margin-top: 20px;">
                 <label for="description" style="display: block; font-size: 14px; font-weight: 500; color: #4a5568; margin-bottom: 5px;">Description</label>
-                <textarea id="description" name="description" rows="3" placeholder="Item details..." style="width: 100%; padding: 10px; border: 1px solid #e2e8f0; border-radius: 5px; font-size: 14px; outline: none;"><?=$item['description'];?></textarea>
+                <textarea id="site_description" name="description" rows="3" placeholder="Item details..." style="width: 100%; padding: 10px; border: 1px solid #e2e8f0; border-radius: 5px; font-size: 14px; outline: none;"><?=$item['description'];?></textarea>
             </div>
             <div style="display: flex; gap: 10px; margin-top: 20px;">
                 <a href="items.php" style="padding: 10px 20px; border-radius: 5px; text-decoration: none; font-size: 14px; font-weight: 500; background-color: #edf2f7; color:rgb(15, 15, 16); font-weight: bolder; border: 1px solid rgb(2, 2, 2);">Cancel</a>
                 <button type="submit" name="btn-update-item" style="padding: 10px 20px; border-radius: 5px; border: none; font-size: 14px; font-weight: 500; background-color: #2d3748; color: white; cursor: pointer; font-weight: bold;">Update Item</button>
-                <input type="hidden" name="item_id" value="<?= $item_id; ?>">
+                <input type="hidden" name="id" value="<?= $item_id; ?>">
             </div>
         </form>
     </div>
@@ -131,7 +137,11 @@ function calculateTotalCost() {
 
 function validateForm() {
     const quantity = parseInt(document.getElementById('quantity').value) || 0;
-    const maxQuantity = parseInt(document.getElementById('maxQuantity').value) || 0;
+    const totalDelivered = parseInt(document.getElementById('totalDelivered').value) || 0;
+    const totalApprovedRequests = parseInt(document.getElementById('totalApprovedRequests').value) || 0;
+    const totalInItems = parseInt(document.getElementById('totalInItems').value) || 0;
+    const currentQuantity = parseInt(document.getElementById('currentQuantity').value) || 0;
+    const remainingQuantity = parseInt(document.getElementById('remainingQuantity').value) || 0;
     const cost = parseFloat(document.getElementById('cost').value) || 0;
 
     if (quantity < 0) {
@@ -139,11 +149,14 @@ function validateForm() {
         return false;
     }
 
-    // Allow quantity to exceed remaining quantity during edit, as this might be intentional
-    // But warn the user if the quantity exceeds the remaining quantity
-    if (maxQuantity > 0 && quantity > maxQuantity) {
-        if (!confirm(`The quantity (${quantity}) exceeds the remaining delivered quantity (${maxQuantity}). Are you sure you want to proceed?`)) {
-            return false;
+    if (totalDelivered > 0) {
+        // Calculate max available considering the difference from current quantity
+        const maxAvailable = remainingQuantity + currentQuantity; // What’s left plus what this item currently holds
+
+        if (quantity > maxAvailable) {
+            if (!confirm(`The quantity (${quantity}) exceeds the maximum available quantity (${maxAvailable}). Are you sure you want to proceed?`)) {
+                return false;
+            }
         }
     }
 

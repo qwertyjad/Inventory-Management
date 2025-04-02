@@ -16,11 +16,11 @@ if (!Session::get('csrf_token')) {
 $function = new Functions();
 $guest_user_id = Session::get('guest_user_id');
 $guest_user_name = Session::get('guest_user_name');
-error_log("index.php: Fetching requests for guest_user_id=$guest_user_id");
+error_log("user-dashboard.php: Fetching requests for guest_user_id=$guest_user_id");
 
 // Fetch user's requests (initial load)
 $requests = $function->getItemRequestsByUser($guest_user_id);
-error_log("index.php: Fetched " . count($requests) . " requests: " . json_encode($requests));
+error_log("user-dashboard.php: Fetched " . count($requests) . " requests: " . json_encode($requests));
 ?>
 
 <!DOCTYPE html>
@@ -79,17 +79,9 @@ error_log("index.php: Fetched " . count($requests) . " requests: " . json_encode
             height: 20px;
         }
 
-        .update-btn svg {
-            fill: #2d3748;
-        }
-
-        .delete-btn svg {
-            fill: #e53e3e;
-        }
-
-        .cancel-btn svg {
-            fill: #d69e2e;
-        }
+        .update-btn svg { fill: #2d3748; }
+        .delete-btn svg { fill: #e53e3e; }
+        .cancel-btn svg { fill: #d69e2e; }
     </style>
 </head>
 <body>
@@ -146,7 +138,8 @@ error_log("index.php: Fetched " . count($requests) . " requests: " . json_encode
                                             <?= $request['status'] === 'approved' ? 'background-color: #c6f6d5; color: #38a169;' : 
                                                ($request['status'] === 'pending' ? 'background-color: #fefcbf; color: #d69e2e;' : 
                                                ($request['status'] === 'canceled' ? 'background-color: #ffedd5; color: #f97316;' : 
-                                               'background-color: #fed7d7; color: #e53e3e;')); ?>">
+                                               ($request['status'] === 'rejected' ? 'background-color: #fed7d7; color: #e53e3e;' : 
+                                               'background-color: #e2e8f0; color: #4a5568;'))); ?>">
                                             <?= ucfirst($request['status']); ?>
                                         </span>
                                     </td>
@@ -278,7 +271,8 @@ error_log("index.php: Fetched " . count($requests) . " requests: " . json_encode
                             const statusStyle = request.status === 'Approved' ? 'background-color: #c6f6d5; color: #38a169;' :
                                                (request.status === 'Pending' ? 'background-color: #fefcbf; color: #d69e2e;' :
                                                (request.status === 'Canceled' ? 'background-color: #ffedd5; color: #f97316;' :
-                                               'background-color: #fed7d7; color: #e53e3e;'));
+                                               (request.status === 'Rejected' ? 'background-color: #fed7d7; color: #e53e3e;' :
+                                               'background-color: #e2e8f0; color: #4a5568;')));
 
                             let actions = request.status === 'Pending' ? `
                                 <button class="action-btn update-btn" onclick="openUpdateModal(${request.id}, '${request.item_name}', ${request.quantity}, ${request.available_quantity})">

@@ -9,17 +9,19 @@ $function = new Functions();
 // Fetch unique items from purchase_orders (only delivered)
 $orderedItems = $function->getUniqueOrderedItems();
 
-// Prepare item data for JavaScript (to use in auto-fill)
+// Prepare item data for JavaScript
 $itemsData = [];
 foreach ($orderedItems as $item) {
     $supplier = $function->GetUserInfo($item['supplier_id']);
-    $totalInItems = $function->getTotalQuantityInItems($item['item_name']);
-    $remainingQuantity = $item['total_ordered_quantity'] - $totalInItems;
+    $totalDelivered = $item['total_ordered_quantity']; // Static total from purchase_orders
+    $totalApprovedRequests = $function->getTotalApprovedRequestQuantityByName($item['item_name']); // From item_requests
+    $totalInItems = $function->getTotalQuantityInItems($item['item_name']); // From items table
+    $remainingQuantity = $totalDelivered - ($totalApprovedRequests + $totalInItems);
 
     $itemsData[$item['item_name']] = [
         'unit_cost' => (float)$item['unit_cost'],
         'supplier' => $supplier ? $supplier['full_name'] : 'Unknown',
-        'total_quantity' => (int)$item['total_ordered_quantity'],
+        'total_quantity' => (int)$totalDelivered,
         'remaining_quantity' => max(0, (int)$remainingQuantity) // Ensure non-negative
     ];
 }
@@ -39,17 +41,16 @@ error_log("itemsData: " . json_encode($itemsData));
             <form method="post" action="navigate.php" onsubmit="return validateQuantity()">
                 <div style="display: flex; flex-wrap: wrap; gap: 20px;">
                     <div style="flex: 1; min-width: 300px;">
-                        <label for="name" style="display: block; font-size: 14px; font-weight: 500; color: #4a5568; margin-bottom: 5px;">
-                            Item Name
-                            
-                        </label>
+                        <label for="name" style="display: block; font-size: 14px; font-weight: 500; color: #4a5568; margin-bottom: 5px;">Item Name</label>
                         <select id="name" name="name" required onchange="updateItemDetails()" style="width: 100%; padding: 10px; border: 1px solid #e2e8f0; border-radius: 5px; font-size: 14px; outline: none; background-color: white;">
                             <option value="">Select Item</option>
                             <?php foreach ($orderedItems as $item): ?>
                                 <?php
+                                $totalDelivered = $item['total_ordered_quantity'];
+                                $totalApprovedRequests = $function->getTotalApprovedRequestQuantityByName($item['item_name']);
                                 $totalInItems = $function->getTotalQuantityInItems($item['item_name']);
-                                $remainingQuantity = $item['total_ordered_quantity'] - $totalInItems;
-                                if ($remainingQuantity <= 0) continue; // Skip items with no remaining quantity
+                                $remainingQuantity = $totalDelivered - ($totalApprovedRequests + $totalInItems);
+                                if ($remainingQuantity <= 0) continue; // Hide items with no remaining quantity
                                 ?>
                                 <option value="<?= htmlspecialchars($item['item_name']); ?>">
                                     <?= htmlspecialchars($item['item_name']); ?>
@@ -71,8 +72,9 @@ error_log("itemsData: " . json_encode($itemsData));
                 </div>
                 <div style="display: flex; flex-wrap: wrap; gap: 20px; margin-top: 20px;">
                     <div style="flex: 1; min-width: 300px;">
-                        <label for="quantity" style="display: block; font-size: 14px; font-weight: 500; color: #4a5568; margin-bottom: 5px;">Quantity
-                        <strong><span id="item-quantity-info" style="font-size: 12px; color:rgb(255, 0, 0);">( Select an item to see total and remaining quantity )</span></strong>
+                        <label for="quantity" style="display: block; font-size: 14px; font-weight: 500; color: #4a5568; margin-bottom: 5px;">
+                            Quantity
+                            <strong><span id="item-quantity-info" style="font-size: 12px; color:rgb(255, 0, 0);">( Select an item to see remaining quantity )</span></strong>
                         </label>
                         <input type="number" id="quantity" name="quantity" min="1" value="0" required oninput="calculateTotalCost()" style="width: 100%; padding: 10px; border: 1px solid #e2e8f0; border-radius: 5px; font-size: 14px; outline: none;">
                         <input type="hidden" id="maxQuantity" value="0">
@@ -144,7 +146,7 @@ function updateItemDetails() {
         const remainingQuantity = itemsData[itemName].remaining_quantity;
         maxQuantityInput.value = remainingQuantity;
 
-        // Update the label with total and remaining quantity
+        // Update the label with remaining quantity only
         itemQuantityInfo.textContent = `(Remaining: ${remainingQuantity})`;
         
         // Reset quantity to 0 and recalculate total cost
@@ -157,7 +159,7 @@ function updateItemDetails() {
         costInput.value = '0.00';
         supplierInput.value = '';
         maxQuantityInput.value = '0';
-        itemQuantityInfo.textContent = '(Select an item to see total and remaining quantity)';
+        itemQuantityInfo.textContent = '(Select an item to see remaining quantity)';
         quantityInput.value = 0;
         calculateTotalCost();
     }

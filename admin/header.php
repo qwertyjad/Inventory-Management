@@ -80,6 +80,14 @@ $currentPage = basename($_SERVER['PHP_SELF']);
               </a>
             </li>
             <li class="sidebar-item">
+              <a class="sidebar-link <?= $currentPage == 'admin-handle-requests.php' ? 'active' : ''; ?>" href="admin-handle-requests.php" aria-expanded="false">
+                <span>
+                  <i class="ti ti-truck"></i>
+                </span>
+                <span class="hide-menu">Handle Request</span>
+              </a>
+            </li>
+            <li class="sidebar-item">
               <a class="sidebar-link <?= $currentPage == 'order-new-item.php' ? 'active' : ''; ?>" href="order-new-item.php" aria-expanded="false">
                 <span>
                   <i class="ti ti-shopping-cart"></i>

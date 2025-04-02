@@ -14,6 +14,9 @@ $user = $user_id ? $function->GetUserInfo($user_id) : null;
 // Fetch purchase orders assigned to this supplier
 $supplier_id = $user['id'];
 $orders = $function->getOrdersBySupplier($supplier_id);
+
+// Log the raw orders for debugging
+error_log("index.php: Raw orders: " . json_encode($orders));
 ?>
 
 <div style="padding: 20px; font-family: 'Arial', sans-serif; background-color: #f5f7fa; min-height: 100vh;">
@@ -51,33 +54,46 @@ $orders = $function->getOrdersBySupplier($supplier_id);
                         <th style="padding: 12px 16px;">Actions</th>
                     </tr>
                 </thead>
-                <tbody>
+                <tbody id="orders-table">
                     <?php
                     if ($orders) {
                         foreach ($orders as $order):
-                            $statusColor = $order['status'] === 'ordered' ? '#f6e05e' : ($order['status'] === 'shipped' ? '#63b3ed' : '#38a169');
+                            $statusLower = strtolower(trim($order['status']));
+                            error_log("index.php: Processing order {$order['po_number']}, status: {$statusLower}");
+                            $statusColor = $statusLower === 'ordered' ? '#f6e05e' : 
+                                          ($statusLower === 'shipped' ? '#63b3ed' : 
+                                          ($statusLower === 'delivered' ? '#38a169' : 
+                                          ($statusLower === 'canceled' ? '#e53e3e' : '#718096')));
                     ?>
                         <tr style="border-top: 1px solid #edf2f7; font-size: 14px; color: #2d3748;">
                             <td style="padding: 12px 16px;"><?=$order['po_number'];?></td>
                             <td style="padding: 12px 16px;"><?=$order['item_name'];?></td>
                             <td style="padding: 12px 16px;"><?=$order['quantity'];?></td>
                             <td style="padding: 12px 16px;">₱<?=number_format($order['total_cost'], 2);?></td>
-                            <td style="padding: 12px 16px;"><?=$order['order_date'];?></td>
+                            <td style="padding: 12px 16px;"><?=date('F j, Y, g:i A', strtotime($order['order_date']));?></td>
                             <td style="padding: 12px 16px;">
                                 <span style="background-color: <?=$statusColor;?>; color: white; padding: 4px 8px; border-radius: 12px; font-size: 12px; font-weight: 500;">
-                                    <?=$order['status'];?>
+                                    <?=ucfirst($order['status']);?>
                                 </span>
                             </td>
                             <td style="padding: 12px 16px;">
-                                <form method="post" action="navigate.php" style="display: inline;">
-                                    <input type="hidden" name="po_number" value="<?=$order['po_number'];?>">
-                                    <select name="status" onchange="this.form.submit()" style="padding: 5px; border: 1px solid #e2e8f0; border-radius: 5px; font-size: 14px; outline: none;">
-                                        <option value="ordered" <?=$order['status'] === 'ordered' ? 'selected' : '';?>>Ordered</option>
-                                        <option value="shipped" <?=$order['status'] === 'shipped' ? 'selected' : '';?>>Shipped</option>
-                                        <option value="delivered" <?=$order['status'] === 'delivered' ? 'selected' : '';?>>Delivered</option>
-                                    </select>
-                                    <input type="hidden" name="btn-update-status">
-                                </form>
+                                <?php if ($statusLower === 'delivered' || $statusLower === 'canceled'): ?>
+                                    <span style="color: #718096; font-size: 14px;">No actions available</span>
+                                <?php else: ?>
+                                    <form method="post" action="navigate.php" style="display: inline;">
+                                        <input type="hidden" name="po_number" value="<?=$order['po_number'];?>">
+                                        <select name="status" onchange="this.form.submit()" style="padding: 5px; border: 1px solid #e2e8f0; border-radius: 5px; font-size: 14px; outline: none;">
+                                            <?php if ($statusLower === 'ordered'): ?>
+                                                <option value="ordered" selected>Ordered</option>
+                                                <option value="shipped">Shipped</option>
+                                            <?php elseif ($statusLower === 'shipped'): ?>
+                                                <option value="shipped" selected>Shipped</option>
+                                                <option value="delivered">Delivered</option>
+                                            <?php endif; ?>
+                                        </select>
+                                        <input type="hidden" name="btn-update-status">
+                                    </form>
+                                <?php endif; ?>
                             </td>
                         </tr>
                     <?php
@@ -128,23 +144,87 @@ document.addEventListener('DOMContentLoaded', function() {
     if (toastContainer) {
         const toasts = toastContainer.querySelectorAll('.toast-message');
         toasts.forEach(toast => {
-            // Show toast
-            setTimeout(() => {
-                toast.style.opacity = '1';
-            }, 100);
-
-            // Hide toast after 3 seconds
-            setTimeout(() => {
-                toast.style.opacity = '0';
-            }, 3000);
-
-            // Remove toast from DOM after fading out to prevent overlap
-            setTimeout(() => {
-                toast.remove();
-            }, 3500);
+            setTimeout(() => { toast.style.opacity = '1'; }, 100);
+            setTimeout(() => { toast.style.opacity = '0'; }, 3000);
+            setTimeout(() => { toast.remove(); }, 3500);
         });
     }
+
+    // Start real-time updates
+    fetchSupplierOrdersData();
+    setInterval(fetchSupplierOrdersData, 5000); // Poll every 5 seconds
 });
+
+// Fetch and update supplier orders in real-time
+function fetchSupplierOrdersData() {
+    fetch('fetch_supplier_orders_data.php')
+        .then(response => response.json())
+        .then(data => {
+            const ordersTable = document.getElementById('orders-table');
+            ordersTable.innerHTML = '';
+
+            if (data.orders.length === 0) {
+                ordersTable.innerHTML = `
+                    <tr>
+                        <td colspan="7" style="padding: 20px; text-align: center; color: #718096; font-size: 14px;">No purchase orders assigned to you.</td>
+                    </tr>
+                `;
+            } else {
+                data.orders.forEach(order => {
+                    const statusLower = order.status.toLowerCase().trim();
+                    console.log(`Processing order ${order.po_number}, status: ${statusLower}`); // Debug in browser console
+                    const statusColor = statusLower === 'ordered' ? '#f6e05e' : 
+                                       (statusLower === 'shipped' ? '#63b3ed' : 
+                                       (statusLower === 'delivered' ? '#38a169' : 
+                                       (statusLower === 'canceled' ? '#e53e3e' : '#718096')));
+
+                    let actions = '';
+                    if (statusLower === 'delivered' || statusLower === 'canceled') {
+                        actions = `<span style="color: #718096; font-size: 14px;">No actions available</span>`;
+                    } else {
+                        actions = `
+                            <form method="post" action="navigate.php" style="display: inline;">
+                                <input type="hidden" name="po_number" value="${order.po_number}">
+                                <select name="status" onchange="this.form.submit()" style="padding: 5px; border: 1px solid #e2e8f0; border-radius: 5px; font-size: 14px; outline: none;">
+                        `;
+                        if (statusLower === 'ordered') {
+                            actions += `
+                                <option value="ordered" selected>Ordered</option>
+                                <option value="shipped">Shipped</option>
+                            `;
+                        } else if (statusLower === 'shipped') {
+                            actions += `
+                                <option value="shipped" selected>Shipped</option>
+                                <option value="delivered">Delivered</option>
+                            `;
+                        }
+                        actions += `
+                                </select>
+                                <input type="hidden" name="btn-update-status">
+                            </form>
+                        `;
+                    }
+
+                    ordersTable.innerHTML += `
+                        <tr style="border-top: 1px solid #edf2f7; font-size: 14px; color: #2d3748;">
+                            <td style="padding: 12px 16px;">${order.po_number}</td>
+                            <td style="padding: 12px 16px;">${order.item_name}</td>
+                            <td style="padding: 12px 16px;">${order.quantity}</td>
+                            <td style="padding: 12px 16px;">₱${order.total_cost}</td>
+                            <td style="padding: 12px 16px;">${order.order_date}</td>
+                            <td style="padding: 12px 16px;">
+                                <span style="background-color: ${statusColor}; color: white; padding: 4px 8px; border-radius: 12px; font-size: 12px; font-weight: 500;">
+                                    ${order.status.charAt(0).toUpperCase() + order.status.slice(1)}
+                                </span>
+                            </td>
+                            <td style="padding: 12px 16px;">${actions}</td>
+                        </tr>
+                    `;
+                });
+            }
+        })
+        .catch(error => console.error('Error fetching supplier orders:', error));
+}
 </script>
 
 <?php 

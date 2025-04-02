@@ -15,7 +15,15 @@ class Session {
     }
 
     public static function isLoggedIn() {
-        return isset($_SESSION['user_id']) && isset($_SESSION['isLoggedIn']) && $_SESSION['isLoggedIn'] === true;
+        // Check for admin/staff users
+        if (isset($_SESSION['user_id']) && isset($_SESSION['isLoggedIn']) && $_SESSION['isLoggedIn'] === true) {
+            return true;
+        }
+        // Check for guest users
+        if (isset($_SESSION['guest_user_id']) && isset($_SESSION['user_role']) && $_SESSION['user_role'] === 'user') {
+            return true;
+        }
+        return false;
     }
 
     public static function requireLogin() {
@@ -28,10 +36,18 @@ class Session {
 
     public static function requireRole($role) {
         self::requireLogin();
-        $user_role = isset($_SESSION['user_role']) ? $_SESSION['user_role'] : null;
+        $user_role = self::get('user_role');
         if ($user_role !== $role) {
             self::set('msg', "<div class='toast-message error'>You do not have permission to access this page!</div>");
-            header('Location: ../index.php');
+            if ($user_role === 'admin') {
+                header('Location: admin/index.php');
+            } elseif ($user_role === 'staff') {
+                header('Location: user/index.php');
+            } elseif ($user_role === 'user') {
+                header('Location: user-dashboard.php');
+            } else {
+                header('Location: index.php');
+            }
             exit;
         }
     }
