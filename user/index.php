@@ -63,7 +63,7 @@ error_log("index.php: Raw orders: " . json_encode($orders));
                             $statusColor = $statusLower === 'ordered' ? '#f6e05e' : 
                                           ($statusLower === 'shipped' ? '#63b3ed' : 
                                           ($statusLower === 'delivered' ? '#38a169' : 
-                                          ($statusLower === 'canceled' ? '#e53e3e' : '#718096')));
+                                          (in_array($statusLower, ['canceled', 'cancelled']) ? '#e53e3e' : '#718096')));
                     ?>
                         <tr style="border-top: 1px solid #edf2f7; font-size: 14px; color: #2d3748;">
                             <td style="padding: 12px 16px;"><?=$order['po_number'];?></td>
@@ -77,7 +77,7 @@ error_log("index.php: Raw orders: " . json_encode($orders));
                                 </span>
                             </td>
                             <td style="padding: 12px 16px;">
-                                <?php if ($statusLower === 'delivered' || $statusLower === 'canceled'): ?>
+                                <?php if ($statusLower === 'delivered' || in_array($statusLower, ['canceled', 'cancelled'])): ?>
                                     <span style="color: #718096; font-size: 14px;">No actions available</span>
                                 <?php else: ?>
                                     <form method="post" action="navigate.php" style="display: inline;">
@@ -176,10 +176,10 @@ function fetchSupplierOrdersData() {
                     const statusColor = statusLower === 'ordered' ? '#f6e05e' : 
                                        (statusLower === 'shipped' ? '#63b3ed' : 
                                        (statusLower === 'delivered' ? '#38a169' : 
-                                       (statusLower === 'canceled' ? '#e53e3e' : '#718096')));
+                                       (['canceled', 'cancelled'].includes(statusLower) ? '#e53e3e' : '#718096')));
 
                     let actions = '';
-                    if (statusLower === 'delivered' || statusLower === 'canceled') {
+                    if (statusLower === 'delivered' || ['canceled', 'cancelled'].includes(statusLower)) {
                         actions = `<span style="color: #718096; font-size: 14px;">No actions available</span>`;
                     } else {
                         actions = `

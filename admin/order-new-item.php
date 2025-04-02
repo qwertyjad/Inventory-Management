@@ -8,7 +8,7 @@ $function = new Functions();
 
 // Fetch all purchase orders (initial load)
 $orders = $function->getAllOrders();
-error_log("order-new.item.php: Raw orders: " . json_encode($orders));
+error_log("order-new-item.php: Raw orders: " . json_encode($orders));
 ?>
 
 <div style="padding: 20px; font-family: 'Arial', sans-serif; background-color: #f5f7fa; min-height: 100vh;">
@@ -59,7 +59,7 @@ error_log("order-new.item.php: Raw orders: " . json_encode($orders));
                             $statusColor = $statusLower === 'ordered' ? '#f6e05e' : 
                                           ($statusLower === 'shipped' ? '#63b3ed' : 
                                           ($statusLower === 'delivered' ? '#38a169' : 
-                                          ($statusLower === 'canceled' ? '#e53e3e' : '#718096')));
+                                          (in_array($statusLower, ['canceled', 'cancelled']) ? '#e53e3e' : '#718096')));
                     ?>
                         <tr style="border-top: 1px solid #edf2f7; font-size: 14px; color: #2d3748;">
                             <td style="padding: 12px 16px;"><?=$order['po_number'];?></td>
@@ -74,7 +74,7 @@ error_log("order-new.item.php: Raw orders: " . json_encode($orders));
                                 </span>
                             </td>
                             <td style="padding: 12px 16px;">
-                                <?php if ($statusLower !== 'canceled' && $statusLower !== 'delivered'): ?>
+                                <?php if (!in_array($statusLower, ['canceled', 'cancelled', 'delivered'])): ?>
                                     <a href="edit-order.php?po_number=<?=$order['po_number'];?>" style="margin-right: 10px; text-decoration: none;">
                                         <svg style="width: 20px; height: 20px;" fill="none" stroke="#2d3748" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path>
@@ -202,9 +202,9 @@ function fetchPurchaseOrdersData() {
                     const statusColor = statusLower === 'ordered' ? '#f6e05e' : 
                                        (statusLower === 'shipped' ? '#63b3ed' : 
                                        (statusLower === 'delivered' ? '#38a169' : 
-                                       (statusLower === 'canceled' ? '#e53e3e' : '#718096')));
+                                       (['canceled', 'cancelled'].includes(statusLower) ? '#e53e3e' : '#718096')));
 
-                    const actions = (statusLower !== 'canceled' && statusLower !== 'delivered') ? `
+                    const actions = (!['canceled', 'cancelled', 'delivered'].includes(statusLower)) ? `
                         <a href="edit-order.php?po_number=${order.po_number}" style="margin-right: 10px; text-decoration: none;">
                             <svg style="width: 20px; height: 20px;" fill="none" stroke="#2d3748" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path>
