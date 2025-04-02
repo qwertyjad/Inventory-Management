@@ -2,7 +2,9 @@
 session_start();
 include '../function.php';
 require '../vendor/autoload.php';
-
+if (!class_exists('PHPMailer\PHPMailer\PHPMailer')) {
+    die('PHPMailer class not found. Check Composer installation.');
+}
 use PHPMailer\PHPMailer\PHPMailer;
 use PHPMailer\PHPMailer\Exception;
 
@@ -24,7 +26,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'full_name' => trim($_POST['full_name']),
             'email' => filter_var($_POST['email'], FILTER_SANITIZE_EMAIL),
             'password' => $_POST['password'],
-            'role' => 'staff' // Default role, can be modified if needed
+            'role' => 'staff'
         ];
 
         // Validate inputs
@@ -46,22 +48,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     // Send OTP via email
                     $mail = new PHPMailer(true);
                     try {
+                        // Server settings
                         $mail->isSMTP();
                         $mail->Host = 'smtp.gmail.com';
                         $mail->SMTPAuth = true;
-                        $mail->Username = 'hadizy.io@gmail.com'; // Replace with your email
-                        $mail->Password = 'czdq kiqz ctsq lkiw'; // Replace with your app-specific password
+                        $mail->Username = 'hadizy.io@gmail.com'; // Your Gmail
+                        $mail->Password = 'czdq kiqz ctsq lkiw'; // Your App Password
                         $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
                         $mail->Port = 587;
 
-                        $mail->setFrom('your-email@gmail.com', 'ContructInv');
+                        // Recipients
+                        $mail->setFrom('hadizy.io@gmail.com', 'ContructInv'); // Use the same email as Username
                         $mail->addAddress($data['email']);
+
+                        // Content
                         $mail->isHTML(true);
                         $mail->Subject = 'Your OTP for ContructInv Registration';
                         $mail->Body = "Hello {$data['full_name']},<br>Your OTP is <strong>{$otp}</strong>. It expires in 5 minutes.";
-                        $mail->send();
 
-                        // Store temp user ID for 2FA verification
+                        $mail->send();
                         $_SESSION['temp_user_id'] = $userId;
                         header('Location: verify-2fa.php');
                         exit;
@@ -88,25 +93,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <link rel="shortcut icon" type="image/png" href="../assets/images/logos/favicon.png" />
     <link rel="stylesheet" href="../assets/libs/bootstrap/dist/css/bootstrap.min.css" />
     <style>
-        #toast-container {
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            z-index: 1000;
-        }
-        #toast-container .toast-message {
-            padding: 10px 20px;
-            border-radius: 5px;
-            font-size: 14px;
-            color: white;
-            opacity: 0;
-            transition: opacity 0.5s ease-in-out;
-            margin-bottom: 10px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-        }
-        #toast-container .toast-message.error {
-            background-color: #e53e3e;
-        }
+        #toast-container { position: fixed; top: 20px; right: 20px; z-index: 1000; }
+        #toast-container .toast-message { padding: 10px 20px; border-radius: 5px; font-size: 14px; color: white; opacity: 0; transition: opacity 0.5s ease-in-out; margin-bottom: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
+        #toast-container .toast-message.error { background-color: #e53e3e; }
     </style>
 </head>
 <body class="bg-light min-vh-100 d-flex align-items-center justify-content-center">
@@ -116,9 +105,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <div class="card shadow-lg border-1">
                     <div class="card-body p-5">
                         <div class="text-center mb-4 d-flex justify-content-center align-items-center">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" 
-                                 stroke="#000000" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" 
-                                 class="lucide lucide-package me-2">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#000000" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-package me-2">
                                 <path d="M11 21.73a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73z"></path>
                                 <path d="M12 22V12"></path>
                                 <path d="m3.3 7 7.703 4.734a2 2 0 0 0 1.994 0L20.7 7"></path>
@@ -129,18 +116,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         <p class="text-center text-dark">Create your account</p>
 
                         <?php if (!empty($error)): ?>
-                            <div class="alert alert-danger text-center"><?php echo $error; ?></div>
+                            <div class="alert alert-danger text-center"><?php echo htmlspecialchars($error); ?></div>
                         <?php endif; ?>
 
                         <form method="POST">
-                            <input type="hidden" name="csrf_token" value="<?php echo $_SESSION['csrf_token']; ?>">
+                            <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($_SESSION['csrf_token']); ?>">
                             <div class="mb-3">
                                 <label class="form-label fw-medium text-dark">Full Name</label>
-                                <input type="text" class="form-control" name="full_name" required>
+                                <input type="text" class="form-control" name="full_name" value="<?php echo isset($data['full_name']) ? htmlspecialchars($data['full_name']) : ''; ?>" required>
                             </div>
                             <div class="mb-3">
                                 <label class="form-label fw-medium text-dark">Email</label>
-                                <input type="email" class="form-control" name="email" required>
+                                <input type="email" class="form-control" name="email" value="<?php echo isset($data['email']) ? htmlspecialchars($data['email']) : ''; ?>" required>
                             </div>
                             <div class="mb-3">
                                 <label class="form-label fw-medium text-dark">Password</label>
@@ -152,10 +139,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 <button type="submit" class="btn btn-dark w-50 py-2 fw-medium text-white">Register</button>
                             </div>
                             <div class="text-center">
-                                <p class="mb-0 text-dark">Already have an account?
-                                <a href="login.php" class="text-dark"><strong>Sign In</strong></a>
-                                </p>
-                                
+                                <p class="mb-0 text-dark">Already have an account? <a href="login.php" class="text-dark"><strong>Sign In</strong></a></p>
                             </div>
                         </form>
                     </div>
